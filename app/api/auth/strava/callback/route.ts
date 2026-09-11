@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
+
+// Create an admin Supabase client using the Service Role Key to bypass RLS in server routes
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -29,8 +34,8 @@ export async function GET(request: Request) {
 
   const { athlete, access_token, refresh_token, expires_at } = data;
 
-  // Save or update user credentials in Supabase
-  const { error } = await supabase.from('users').upsert({
+  // Save or update user credentials in Supabase using the admin client
+  const { error } = await supabaseAdmin.from('users').upsert({
     strava_athlete_id: athlete.id,
     access_token,
     refresh_token,
@@ -40,7 +45,7 @@ export async function GET(request: Request) {
 
   if (error) {
     console.error('Supabase save error:', error);
-    return NextResponse.json({ error: 'Failed to save user session' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to save user session', details: error.message }, { status: 500 });
   }
 
   // Redirect user to the dashboard
