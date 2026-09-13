@@ -65,12 +65,12 @@ async function getDashboardData(athleteId: string) {
   // 2. Ensure access token is valid
   const accessToken = await getValidAccessToken(user);
 
-  // 3. Fetch fresh Athlete Profile & Native Gear directly from Strava
+// 3. Fetch Athlete Profile info (or fallback to database profile)
   let athlete = null;
   try {
     const stravaRes = await fetch('https://www.strava.com/api/v3/athlete', {
       headers: { Authorization: `Bearer ${accessToken}` },
-      cache: 'no-store', // Always fetch fresh data on page load
+      cache: 'no-store',
     });
 
     if (stravaRes.ok) {
@@ -80,12 +80,21 @@ async function getDashboardData(athleteId: string) {
     console.error('Strava API fetch error:', err);
   }
 
-  // Fallback profile picture from database if API call returns null
   const profilePic = athlete?.profile || athlete?.profile_medium || user.profile_picture || '';
   const firstName = athlete?.firstname || user.firstname || 'Athlete';
   const lastName = athlete?.lastname || user.lastname || '';
 
-  // 4. Fetch custom bike components & custom gear from Supabase
+  // 4. Fetch stored Bikes, Shoes, Components, and Custom Gear directly from Supabase
+  const { data: dbBikes } = await supabase
+    .from('bikes')
+    .select('*')
+    .eq('user_id', athleteId);
+
+  const { data: dbShoes } = await supabase
+    .from('shoes')
+    .select('*')
+    .eq('user_id', athleteId);
+
   const { data: bikeComponents } = await supabase
     .from('bike_components')
     .select('*')
@@ -104,8 +113,8 @@ async function getDashboardData(athleteId: string) {
       firstname: firstName,
       lastname: lastName,
     },
-    bikes: athlete?.bikes || [],
-    shoes: athlete?.shoes || [],
+    bikes: dbBikes || [],
+    shoes: dbShoes || [],
     bikeComponents: bikeComponents || [],
     customGear: customGear || [],
   };
