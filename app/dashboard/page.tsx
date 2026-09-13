@@ -9,8 +9,51 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+async function getValidAccessToken(user: any) {
+  const nowInSeconds = Math.floor(Date.now() / 1000);
+
+  // Return existing token if it's still valid for at least 5 minutes
+  if (user.expires_at && user.expires_at > nowInSeconds + 300) {
+    return user.access_token;
+  }
+
+  // Token is expired -> Refresh it with Strava
+  try {
+    const refreshRes = await fetch('https://www.strava.com/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: process.env.STRAVA_CLIENT_ID,
+        client_secret: process.env.STRAVA_CLIENT_SECRET,
+        grant_type: 'refresh_token',
+        refresh_token: user.refresh_token,
+      }),
+    });
+
+    const refreshed = await refreshRes.json();
+
+    if (refreshed.access_token) {
+      await supabase
+        .from('users')
+        .update({
+          access_token: refreshed.access_token,
+          refresh_token: refreshed.refresh_token,
+          expires_at: refreshed.expires_at,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('strava_athlete_id', user.strava_athlete_id);
+
+      return refreshed.access_token;
+    }
+  } catch (err) {
+    console.error('Failed to refresh Strava token:', err);
+  }
+
+  return user.access_token;
+}
+
 async function getDashboardData(athleteId: string) {
-  // 1. Fetch tokens from Supabase
+  // 1. Fetch user tokens & stored profile from Supabase
   const { data: user } = await supabase
     .from('users')
     .select('*')
@@ -19,15 +62,30 @@ async function getDashboardData(athleteId: string) {
 
   if (!user) return null;
 
-  // 2. Fetch Athlete Profile & Native Gear from Strava API
-  const stravaRes = await fetch('https://www.strava.com/api/v3/athlete', {
-    headers: { Authorization: `Bearer ${user.access_token}` },
-    next: { revalidate: 300 }, // Cache for 5 minutes
-  });
+  // 2. Ensure access token is valid
+  const accessToken = await getValidAccessToken(user);
 
-  const athlete = await stravaRes.json();
+  // 3. Fetch fresh Athlete Profile & Native Gear directly from Strava
+  let athlete = null;
+  try {
+    const stravaRes = await fetch('https://www.strava.com/api/v3/athlete', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: 'no-store', // Always fetch fresh data on page load
+    });
 
-  // 3. Fetch custom bike components & custom gear from Supabase
+    if (stravaRes.ok) {
+      athlete = await stravaRes.json();
+    }
+  } catch (err) {
+    console.error('Strava API fetch error:', err);
+  }
+
+  // Fallback profile picture from database if API call returns null
+  const profilePic = athlete?.profile || athlete?.profile_medium || user.profile_picture || '';
+  const firstName = athlete?.firstname || user.firstname || 'Athlete';
+  const lastName = athlete?.lastname || user.lastname || '';
+
+  // 4. Fetch custom bike components & custom gear from Supabase
   const { data: bikeComponents } = await supabase
     .from('bike_components')
     .select('*')
@@ -40,9 +98,14 @@ async function getDashboardData(athleteId: string) {
     .eq('user_id', athleteId);
 
   return {
-    athlete,
-    bikes: athlete.bikes || [],
-    shoes: athlete.shoes || [],
+    athlete: {
+      ...athlete,
+      profile: profilePic,
+      firstname: firstName,
+      lastname: lastName,
+    },
+    bikes: athlete?.bikes || [],
+    shoes: athlete?.shoes || [],
     bikeComponents: bikeComponents || [],
     customGear: customGear || [],
   };
@@ -65,11 +128,17 @@ export default async function DashboardPage() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       <header className="flex items-center gap-4 mb-8">
-        <img
-          src={data.athlete.profile}
-          alt={data.athlete.firstname}
-          className="w-16 h-16 rounded-full border-2 border-orange-500"
-        />
+        {data.athlete.profile ? (
+          <img
+            src={data.athlete.profile}
+            alt={data.athlete.firstname}
+            className="w-16 h-16 rounded-full border-2 border-orange-500 object-cover"
+          />
+        ) : (
+          <div className="w-16 h-16 rounded-full border-2 border-orange-500 bg-orange-100 flex items-center justify-center font-bold text-orange-600 text-xl">
+            {data.athlete.firstname[0]}
+          </div>
+        )}
         <div>
           <h1 className="text-2xl font-bold">
             {data.athlete.firstname} {data.athlete.lastname}’s Garage
