@@ -122,9 +122,12 @@ async function getDashboardData(athleteId: string) {
     })
   );
 
+  // Diagnostic Log 1: Inspect what Strava returned
+  console.log('Fetched Detailed Bikes:', JSON.stringify(detailedBikes, null, 2));  
+
   // Sync detailed gear records into Supabase tables
   if (detailedBikes.length > 0) {
-    await supabase.from('bikes').upsert(
+    const { error: bikeErr } = await supabase.from('bikes').upsert(
       detailedBikes.map((b) => ({
         id: b.id,
         user_id: athleteId,
@@ -138,6 +141,11 @@ async function getDashboardData(athleteId: string) {
       })),
       { onConflict: 'id' }
     );
+    if (bikeErr) {
+      console.error('Supabase Bikes Upsert Error:', bikeErr);
+    } else {
+      console.log('Successfully upserted bikes to Supabase!');
+    }
   }
 
   if (detailedShoes.length > 0) {
