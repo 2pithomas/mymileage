@@ -65,7 +65,7 @@ async function getDashboardData(athleteId: string) {
   // 2. Ensure access token is valid
   const accessToken = await getValidAccessToken(user);
 
-// 3. Fetch Athlete Profile info (or fallback to database profile)
+// 3. Fetch Athlete Profile & Gear Summary from Strava API
   let athlete = null;
   try {
     const stravaRes = await fetch('https://www.strava.com/api/v3/athlete', {
@@ -83,6 +83,78 @@ async function getDashboardData(athleteId: string) {
   const profilePic = athlete?.profile || athlete?.profile_medium || user.profile_picture || '';
   const firstName = athlete?.firstname || user.firstname || 'Athlete';
   const lastName = athlete?.lastname || user.lastname || '';
+
+  // Fetch full details via getGearById for each bike and upsert into Supabase
+  const summaryBikes = athlete?.bikes || [];
+  const detailedBikes = await Promise.all(
+    summaryBikes.map(async (bikeSummary: { id: string }) => {
+      try {
+        const gearRes = await fetch(`https://www.strava.com/api/v3/gear/${bikeSummary.id}`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          next: { revalidate: 3600 },
+        });
+        if (gearRes.ok) {
+          return await gearRes.json();
+        }
+      } catch (err) {
+        console.error(`Error fetching bike gear ${bikeSummary.id}:`, err);
+      }
+      return bikeSummary;
+    })
+  );
+
+  // Fetch full details via getGearById for each shoe and upsert into Supabase
+  const summaryShoes = athlete?.shoes || [];
+  const detailedShoes = await Promise.all(
+    summaryShoes.map(async (shoeSummary: { id: string }) => {
+      try {
+        const gearRes = await fetch(`https://www.strava.com/api/v3/gear/${shoeSummary.id}`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          next: { revalidate: 3600 },
+        });
+        if (gearRes.ok) {
+          return await gearRes.json();
+        }
+      } catch (err) {
+        console.error(`Error fetching shoe gear ${shoeSummary.id}:`, err);
+      }
+      return shoeSummary;
+    })
+  );
+
+  // Sync detailed gear records into Supabase tables
+  if (detailedBikes.length > 0) {
+    await supabase.from('bikes').upsert(
+      detailedBikes.map((b) => ({
+        id: b.id,
+        user_id: athleteId,
+        name: b.name || `${b.brand_name || ''} ${b.model_name || ''}`.trim(),
+        brand_name: b.brand_name || null,
+        model_name: b.model_name || null,
+        frame_type: b.frame_type || null,
+        description: b.description || null,
+        distance_meters: b.distance || 0,
+        updated_at: new Date().toISOString(),
+      })),
+      { onConflict: 'id' }
+    );
+  }
+
+  if (detailedShoes.length > 0) {
+    await supabase.from('shoes').upsert(
+      detailedShoes.map((s) => ({
+        id: s.id,
+        user_id: athleteId,
+        name: s.name || `${s.brand_name || ''} ${s.model_name || ''}`.trim(),
+        brand_name: s.brand_name || null,
+        model_name: s.model_name || null,
+        description: s.description || null,
+        distance_meters: s.distance || 0,
+        updated_at: new Date().toISOString(),
+      })),
+      { onConflict: 'id' }
+    );
+  }
 
   // 4. Fetch stored Bikes, Shoes, Components, and Custom Gear directly from Supabase
   const { data: dbBikes } = await supabase
@@ -113,8 +185,8 @@ async function getDashboardData(athleteId: string) {
       firstname: firstName,
       lastname: lastName,
     },
-    bikes: dbBikes || [],
-    shoes: dbShoes || [],
+    bikes: dbBikes || detailedBikes,
+    shoes: dbShoes || detailedShoes,
     bikeComponents: bikeComponents || [],
     customGear: customGear || [],
   };
