@@ -18,7 +18,7 @@ export default function BikeCard({ bike, components }: BikeCardProps) {
         <div>
           <h3 className="text-lg font-bold">{bike.name}</h3>
           <p className="text-sm text-gray-500">
-            Total Distance: {((bike.converted_distance || 0)).toFixed(0)} miles
+            Total Distance: {((bike.distance || 0)).toFixed(0)} miles
           </p>
         </div>
         {bike.primary && (
