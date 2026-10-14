@@ -8,7 +8,7 @@ export async function GET() {
   );
 
   // IMPORTANT: scope MUST contain activity:read_all to unlock athlete gear (bikes & shoes)
-  const stravaAuthUrl = `https://www.strava.com/oauth/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&approval_prompt=force&scope=read,activity:read_all`;
+  const stravaAuthUrl = `https://www.strava.com/oauth/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&approval_prompt=force&scope=read,profile:read_all,activity:read_all`;
 
   return NextResponse.redirect(stravaAuthUrl);
 }
