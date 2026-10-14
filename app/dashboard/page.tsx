@@ -125,28 +125,36 @@ async function getDashboardData(athleteId: string) {
   // Diagnostic Log 1: Inspect what Strava returned
   console.log('Fetched Detailed Bikes:', JSON.stringify(detailedBikes, null, 2));  
 
-  // Sync detailed gear records into Supabase tables
-  if (detailedBikes.length > 0) {
-    const { error: bikeErr } = await supabase.from('bikes').upsert(
-      detailedBikes.map((b) => ({
+// Sync detailed bike gear records into Supabase 'bikes' table
+if (detailedBikes.length > 0) {
+  const { error: bikeErr } = await supabase.from('bikes').upsert(
+    detailedBikes.map((b) => {
+      // Ensure name is non-empty to satisfy NOT NULL constraint on bikes.name
+      const derivedName = (b.name || `${b.brand_name || ''} ${b.model_name || ''}`).trim();
+      const fallbackName = derivedName.length > 0 ? derivedName : 'Unnamed Bike';
+
+      return {
         id: b.id,
         user_id: athleteId,
-        name: b.name || `${b.brand_name || ''} ${b.model_name || ''}`.trim(),
+        name: fallbackName,
+        primary_gear: b.primary ?? false,
         brand_name: b.brand_name || null,
         model_name: b.model_name || null,
         frame_type: b.frame_type || null,
         description: b.description || null,
-        distance_meters: b.distance || 0,
+        distance_meters: b.distance || 0, // Strava 'distance' (meters) -> Supabase 'distance_meters'
         updated_at: new Date().toISOString(),
-      })),
-      { onConflict: 'id' }
-    );
-    if (bikeErr) {
-      console.error('Supabase Bikes Upsert Error:', bikeErr);
-    } else {
-      console.log('Successfully upserted bikes to Supabase!');
-    }
+      };
+    }),
+    { onConflict: 'id' }
+  );
+
+  if (bikeErr) {
+    console.error('Supabase Bikes Upsert Error:', bikeErr);
+  } else {
+    console.log('Successfully upserted bikes to Supabase!');
   }
+}
 
   if (detailedShoes.length > 0) {
     await supabase.from('shoes').upsert(
