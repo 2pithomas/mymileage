@@ -11,9 +11,12 @@ const supabase = createClient(
 
 async function getValidAccessToken(user: any) {
   const nowInSeconds = Math.floor(Date.now() / 1000);
+  const expiresAtSec = user.token_expires_at
+    ? Math.floor(new Date(user.token_expires_at).getTime() / 1000)
+    : 0;
 
   // Return existing token if it's still valid for at least 5 minutes
-  if (user.expires_at && user.expires_at > nowInSeconds + 300) {
+  if (expiresAtSec > nowInSeconds + 300) {
     return user.access_token;
   }
 
@@ -33,17 +36,21 @@ async function getValidAccessToken(user: any) {
     const refreshed = await refreshRes.json();
 
     if (refreshed.access_token) {
-      await supabase
+      const { error: updErr } = await supabase
         .from('users')
         .update({
           access_token: refreshed.access_token,
           refresh_token: refreshed.refresh_token,
-          expires_at: refreshed.expires_at,
+          token_expires_at: new Date(refreshed.expires_at * 1000).toISOString(),
           updated_at: new Date().toISOString(),
         })
         .eq('strava_athlete_id', user.strava_athlete_id);
 
+      if (updErr) console.error('Token update error:', updErr);
+
       return refreshed.access_token;
+    } else {
+      console.error('Token refresh failed:', refreshRes.status, refreshed);
     }
   } catch (err) {
     console.error('Failed to refresh Strava token:', err);
@@ -73,9 +80,14 @@ async function getDashboardData(athleteId: string) {
       cache: 'no-store',
     });
 
+    console.log('Athlete status:', stravaRes.status);
     if (stravaRes.ok) {
       athlete = await stravaRes.json();
+      console.log('Athlete bikes count:', athlete?.bikes?.length);
+    } else {
+      console.error('Athlete fetch failed:', stravaRes.status, await stravaRes.text());
     }
+    
   } catch (err) {
     console.error('Strava API fetch error:', err);
   }

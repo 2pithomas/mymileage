@@ -39,16 +39,17 @@ export async function GET(request: Request) {
     const athleteId = athlete.id.toString();
 
     // 2. Save/Update User Row in Supabase
-    await supabaseAdmin.from('users').upsert({
+    const { error: userErr } = await supabaseAdmin.from('users').upsert({
       strava_athlete_id: athleteId,
       access_token: tokenData.access_token,
       refresh_token: tokenData.refresh_token,
-      expires_at: tokenData.expires_at,
-      firstname: athlete.firstname,
-      lastname: athlete.lastname,
-      profile_picture: athlete.profile,
+      token_expires_at: new Date(tokenData.expires_at * 1000).toISOString(),
       updated_at: new Date().toISOString(),
     }, { onConflict: 'strava_athlete_id' });
+
+    if (userErr) {
+      console.error('Users upsert error:', userErr);
+    }
 
     // 3. Fetch Full Athlete Profile to get all Bikes & Shoes
     const athleteRes = await fetch('https://www.strava.com/api/v3/athlete', {

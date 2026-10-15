@@ -60,9 +60,12 @@ async function syncAthleteGear(athleteId: number) {
 
   let accessToken = user.access_token;
   const nowInSeconds = Math.floor(Date.now() / 1000);
+  const expiresAtSec = user.token_expires_at
+    ? Math.floor(new Date(user.token_expires_at).getTime() / 1000)
+    : 0;
 
   // Refresh access token if expired (or expiring in < 5 minutes)
-  if (user.token_expires_at && user.token_expires_at <= nowInSeconds + 300) {
+  if (expiresAtSec <= nowInSeconds + 300) {
     const refreshRes = await fetch('https://www.strava.com/oauth/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -79,16 +82,19 @@ async function syncAthleteGear(athleteId: number) {
     if (refreshed.access_token) {
       accessToken = refreshed.access_token;
 
-      // Update fresh tokens in database
-      await supabaseAdmin
+      const { error: updErr } = await supabaseAdmin
         .from('users')
         .update({
           access_token: refreshed.access_token,
           refresh_token: refreshed.refresh_token,
-          token_expires_at: refreshed.expires_at,
+          token_expires_at: new Date(refreshed.expires_at * 1000).toISOString(),
           updated_at: new Date().toISOString(),
         })
         .eq('strava_athlete_id', athleteId);
+
+      if (updErr) console.error('Webhook token update error:', updErr);
+    } else {
+      console.error('Webhook token refresh failed:', refreshRes.status, refreshed);
     }
   }
 
