@@ -66,7 +66,7 @@ export async function GET(request: Request) {
           user_id: athleteId,
           name: bike.name,
           primary_gear: bike.primary,
-          distance: bike.converted_distance || bike.distance,
+          ...(typeof bike.distance === 'number' ? { distance_meters: bike.distance } : {}),
           updated_at: new Date().toISOString(),
         }));
 

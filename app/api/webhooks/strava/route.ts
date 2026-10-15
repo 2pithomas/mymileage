@@ -119,7 +119,7 @@ async function syncAthleteGear(athleteId: number) {
         user_id: athleteId.toString(),
         name: bike.name,
         primary_gear: bike.primary,
-        distance: bike.converted_distance || bike.distance,
+        ...(typeof bike.distance === 'number' ? { distance_meters: bike.distance } : {}),
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'id' }
