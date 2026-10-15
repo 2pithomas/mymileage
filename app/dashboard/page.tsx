@@ -87,7 +87,7 @@ async function getDashboardData(athleteId: string) {
     } else {
       console.error('Athlete fetch failed:', stravaRes.status, await stravaRes.text());
     }
-    
+
   } catch (err) {
     console.error('Strava API fetch error:', err);
   }
@@ -252,7 +252,7 @@ export default async function DashboardPage() {
           <h1 className="text-2xl font-bold">
             {data.athlete.firstname} {data.athlete.lastname}’s Garage
           </h1>
-          <p className="text-gray-500 text-sm">Manage gear, bikes, and component lifespans</p>
+          <p className="text-gray-500 text-sm">Manage bikes, shoes, and any other gear's lifespan</p>
         </div>
       </header>
 
