@@ -107,17 +107,18 @@ async function syncAthleteGear(athleteId: number) {
 
   // Upsert all bikes into your Supabase database
   for (const bike of bikes) {
-    await supabaseAdmin.from('bikes').upsert(
+    const { error } = await supabaseAdmin.from('bikes').upsert(
       {
-        id: bike.id, // Strava gear ID (e.g. b12345)
+        id: bike.id,
         user_id: athleteId.toString(),
         name: bike.name,
-        primary: bike.primary,
-        distance: bike.converted_distance || bike.distance, // distance in meters or miles based on preference
+        primary_gear: bike.primary,
+        distance: bike.converted_distance || bike.distance,
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'id' }
     );
+    if (error) console.error('Webhook bike upsert error:', bike.id, error);
   }
 
   console.log(`Successfully synced ${bikes.length} bikes for athlete ${athleteId}`);
