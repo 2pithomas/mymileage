@@ -111,7 +111,7 @@ export default function GearSection({
               <BikeCard
                 key={bike.id}
                 bike={bike}
-                components={components.filter((c) => c.strava_gear_id === bike.id)}
+                components={components.filter((c) => c.strava_bike_id === bike.id)}
                 athleteId={athleteId}
               />
             ))

@@ -2,6 +2,7 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
+import { seedDefaultComponents } from '@/lib/seedComponents';
 import GearSection from '@/components/GearSection';
 
 const supabase = createClient(
@@ -185,10 +186,17 @@ if (detailedBikes.length > 0) {
   }
 
   // 4. Fetch stored Bikes, Shoes, Components, and Custom Gear directly from Supabase
-  const { data: dbBikes } = await supabase
+  let { data: dbBikes } = await supabase
     .from('bikes')
     .select('*')
     .eq('user_id', athleteId);
+
+  if (await seedDefaultComponents(supabase, athleteId, dbBikes || [])) {
+    ({ data: dbBikes } = await supabase
+      .from('bikes')
+      .select('*')
+      .eq('user_id', athleteId));
+  }
 
   const { data: dbShoes } = await supabase
     .from('shoes')
