@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { wearMeters, latestCheckpoint, nextCheckpoint, toUnits, Units } from '@/lib/wear';
+import { toUnits, Units } from '@/lib/wear';
+import ComponentRow from './ComponentRow';
 
 interface BikeCardProps {
   bike: any;
@@ -12,7 +13,7 @@ interface BikeCardProps {
 
 export default function BikeCard({ bike, components, units = 'mi' }: BikeCardProps) {
   const [showForm, setShowForm] = useState(false);
-  const fmt = (m: number) => Math.round(toUnits(m, units)).toLocaleString();
+  const total = Math.round(toUnits(bike.distance_meters || 0, units)).toLocaleString();
 
   return (
     <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-5 bg-gray-50 dark:bg-gray-900/50">
@@ -20,7 +21,7 @@ export default function BikeCard({ bike, components, units = 'mi' }: BikeCardPro
         <div>
           <h3 className="text-lg font-bold">{bike.name}</h3>
           <p className="text-sm text-gray-500">
-            Total Distance: {fmt(bike.distance_meters || 0)} {units}
+            Total Distance: {total} {units}
           </p>
         </div>
         {bike.primary_gear && (
@@ -40,43 +41,9 @@ export default function BikeCard({ bike, components, units = 'mi' }: BikeCardPro
         ) : components.length === 0 ? (
           <p className="text-xs text-gray-500 italic">No tracked parts yet.</p>
         ) : (
-          components.map((comp) => {
-            const wear = wearMeters(
-              { distance_meters: bike.distance_meters || 0, virtual_meters: bike.virtual_meters || 0 },
-              comp
-            );
-            const first = comp.max_distance_meters;
-            const repeat = comp.repeat_every_meters ?? null;
-            const reached = latestCheckpoint(wear, first, repeat);
-            const next = nextCheckpoint(wear, first, repeat);
-            const pct = next ? Math.min(100, (wear / next) * 100) : 100;
-            const due = reached !== null;
-
-            return (
-              <div key={comp.id} className="text-sm bg-white dark:bg-gray-800 p-2.5 rounded border border-gray-100 dark:border-gray-800">
-                <div className="flex justify-between mb-1">
-                  <span className="font-medium">{comp.name}</span>
-                  <span className="text-xs text-gray-500">
-                    {fmt(wear)} {units}
-                  </span>
-                </div>
-                <div className="flex justify-between text-[11px] text-gray-400 mb-1">
-                  <span>0</span>
-                  <span>{next ? `check at ${fmt(next)}` : ''}</span>
-                </div>
-                <div className="relative w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className={`h-2 rounded-full ${due ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-                <div className="mt-1 text-[11px] text-gray-500">
-                  {due ? 'Check recommended. ' : ''}
-                  {!comp.baseline_confirmed ? 'Estimate: assumes the original part.' : ''}
-                </div>
-              </div>
-            );
-          })
+          components.map((comp) => (
+            <ComponentRow key={comp.id} comp={comp} bike={bike} units={units} />
+          ))
         )}
       </div>
 

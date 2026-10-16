@@ -33,7 +33,8 @@ export async function seedDefaultComponents(
     const track = bike.track_components !== false && !NO_DEFAULTS.test(label);
 
     if (track) {
-      const rows = defaults.map((d: any) => ({
+      const baseDefaults = defaults.filter((d: any) => !String(d.component_type).includes(':'));
+      const rows = baseDefaults.map((d: any) => ({
         user_id: Number(athleteId),
         strava_bike_id: bike.id,
         name: DISPLAY_NAMES[d.component_type] ?? d.component_type,
