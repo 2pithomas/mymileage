@@ -12,12 +12,16 @@ interface Props {
 
 export default function ComponentRow({ comp, bike, units }: Props) {
   const router = useRouter();
-  const [editing, setEditing] = useState(false);
+  const [mode, setMode] = useState<'view' | 'edit' | 'replace'>('view');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [first, setFirst] = useState('');
   const [repeat, setRepeat] = useState('');
+  const [variant, setVariant] = useState('');
+  const [newName, setNewName] = useState('');
+  const [lifespan, setLifespan] = useState('');
 
+  const isBrakes = comp.component_type === 'brake_pads';
   const round = (m: number) => Math.round(toUnits(m, units));
   const fmt = (m: number) => round(m).toLocaleString();
 
@@ -32,21 +36,24 @@ export default function ComponentRow({ comp, bike, units }: Props) {
   const pct = next ? Math.min(100, (wear / next) * 100) : 100;
   const due = reached !== null;
 
-  async function save(payload: Record<string, unknown>) {
+  const initialFirst = String(round(firstCheck));
+  const initialRepeat = repeatEvery ? String(round(repeatEvery)) : '';
+
+  async function call(url: string, method: 'PATCH' | 'POST', payload: Record<string, unknown>) {
     setSaving(true);
     setError('');
     try {
-      const res = await fetch(`/api/components/${comp.id}`, {
-        method: 'PATCH',
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ units, ...payload }),
       });
       if (res.ok) {
-        setEditing(false);
+        setMode('view');
         router.refresh();
       } else {
         const j = await res.json().catch(() => ({}));
-        setError(j.error || 'Save failed');
+        setError(j.error || `Request failed (${res.status})`);
       }
     } catch {
       setError('Network error');
@@ -54,11 +61,39 @@ export default function ComponentRow({ comp, bike, units }: Props) {
     setSaving(false);
   }
 
-  function startEditing() {
-    setFirst(String(round(firstCheck)));
-    setRepeat(repeatEvery ? String(round(repeatEvery)) : '');
+  function startEdit() {
+    setFirst(initialFirst);
+    setRepeat(initialRepeat);
+    setVariant(comp.variant ?? '');
     setError('');
-    setEditing(true);
+    setMode('edit');
+  }
+
+  function startReplace() {
+    setNewName('');
+    setLifespan('');
+    setError('');
+    setMode('replace');
+  }
+
+  function saveEdit() {
+    const payload: Record<string, unknown> = {};
+    if (isBrakes && variant && variant !== (comp.variant ?? '')) payload.variant = variant;
+    if (first !== initialFirst) payload.first_check = first;
+    if (repeat !== initialRepeat) payload.repeat_every = repeat === '' ? null : repeat;
+
+    if (Object.keys(payload).length === 0) {
+      setMode('view');
+      return;
+    }
+    call(`/api/components/${comp.id}`, 'PATCH', payload);
+  }
+
+  function submitReplace() {
+    call(`/api/components/${comp.id}/replace`, 'POST', {
+      new_name: newName,
+      reported_lifespan: lifespan === '' ? null : lifespan,
+    });
   }
 
   return (
@@ -84,36 +119,48 @@ export default function ComponentRow({ comp, bike, units }: Props) {
 
       <div className="mt-1 text-[11px] text-gray-500">
         {due ? 'Check recommended. ' : ''}
-        {!comp.baseline_confirmed ? 'Estimate: assumes the original part.' : ''}
+        {!comp.baseline_confirmed ? 'Estimate: assumes the original part. ' : ''}
+        {isBrakes && !comp.variant ? 'Rim or disc? Choose under Edit thresholds.' : ''}
       </div>
 
-      {comp.component_type === 'brake_pads' && (
-        <div className="flex items-center gap-2 mt-2 text-[11px]">
-          <span className="text-gray-500">Brake type:</span>
-          {(['rim', 'disc'] as const).map((v) => (
-            <button
-              key={v}
-              disabled={saving}
-              onClick={() => comp.variant !== v && save({ variant: v })}
-              className={`px-2 py-0.5 rounded border ${
-                comp.variant === v
-                  ? 'bg-orange-500 text-white border-orange-500'
-                  : 'border-gray-300 text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              {v === 'rim' ? 'Rim' : 'Disc'}
-            </button>
-          ))}
-          {!comp.variant && <span className="text-amber-600">Not set: using a middle estimate</span>}
+      {mode === 'view' && (
+        <div className="mt-2 flex gap-3 text-[11px] font-semibold">
+          <button onClick={startEdit} className="text-orange-600 hover:underline">
+            Edit thresholds
+          </button>
+          <button onClick={startReplace} className="text-orange-600 hover:underline">
+            Replace
+          </button>
         </div>
       )}
 
-      {!editing ? (
-        <button onClick={startEditing} className="mt-2 text-[11px] text-orange-600 font-semibold hover:underline">
-          Edit thresholds
-        </button>
-      ) : (
+      {mode === 'edit' && (
         <div className="mt-2 space-y-2 border-t pt-2">
+          {isBrakes && (
+            <div className="flex items-center gap-2 text-[11px]">
+              <span className="text-gray-500">Brake type:</span>
+              {(['rim', 'disc'] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setVariant(v)}
+                  className={`px-2 py-0.5 rounded border ${
+                    variant === v
+                      ? 'bg-orange-500 text-white border-orange-500'
+                      : 'border-gray-300 text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  {v === 'rim' ? 'Rim' : 'Disc'}
+                </button>
+              ))}
+            </div>
+          )}
+          {isBrakes && variant && variant !== (comp.variant ?? '') && (
+            <p className="text-[11px] text-gray-500">
+              Thresholds switch to the {variant} defaults unless you have customized them or change the numbers below.
+            </p>
+          )}
+
           <div className="flex gap-3">
             <label className="text-[11px] text-gray-500">
               First check ({units})
@@ -141,12 +188,53 @@ export default function ComponentRow({ comp, bike, units }: Props) {
           <div className="flex gap-2">
             <button
               disabled={saving}
-              onClick={() => save({ first_check: first, repeat_every: repeat === '' ? null : repeat })}
+              onClick={saveEdit}
               className="px-2 py-1 text-[11px] font-bold bg-black text-white rounded disabled:opacity-50"
             >
               {saving ? 'Saving...' : 'Save'}
             </button>
-            <button onClick={() => setEditing(false)} className="px-2 py-1 text-[11px] text-gray-600">
+            <button onClick={() => setMode('view')} className="px-2 py-1 text-[11px] text-gray-600">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {mode === 'replace' && (
+        <div className="mt-2 space-y-2 border-t pt-2">
+          <p className="text-[11px] text-gray-500">
+            This starts a new {comp.name.toLowerCase()} at 0 from today. Your thresholds carry over, and the old one is kept in your history.
+          </p>
+          <label className="block text-[11px] text-gray-500">
+            New part (optional)
+            <input
+              type="text"
+              placeholder="e.g. SRAM Force E1 chain"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              className="block w-full mt-0.5 p-1 border rounded text-black bg-white"
+            />
+          </label>
+          <label className="block text-[11px] text-gray-500">
+            How far did the old one last? (optional, {units})
+            <input
+              type="number"
+              min="0"
+              value={lifespan}
+              onChange={(e) => setLifespan(e.target.value)}
+              className="block w-28 mt-0.5 p-1 border rounded text-black bg-white"
+            />
+          </label>
+          {error && <p className="text-[11px] text-red-600">{error}</p>}
+          <div className="flex gap-2">
+            <button
+              disabled={saving}
+              onClick={submitReplace}
+              className="px-2 py-1 text-[11px] font-bold bg-black text-white rounded disabled:opacity-50"
+            >
+              {saving ? 'Replacing...' : 'Confirm replace'}
+            </button>
+            <button onClick={() => setMode('view')} className="px-2 py-1 text-[11px] text-gray-600">
               Cancel
             </button>
           </div>
